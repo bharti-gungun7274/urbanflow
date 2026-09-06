@@ -1,0 +1,7 @@
+{
+  "area": "Delhi",
+  "year": "2020",
+  "lulc_file": "Delhi_LULC_2020.tif",
+  "reference_file": "Delhi_Reference_2020.tif",
+  "points_file": "Delhi_Validation_Points_2020.csv"
+}

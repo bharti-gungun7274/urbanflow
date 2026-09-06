@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+node_modules/
+dist/
+
+# Local databases
+*.db
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Raster data - stored/deployed separately
+*.tif
+*.tiff
+
+# Generated validation outputs
+outputs/
