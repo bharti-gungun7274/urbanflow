@@ -4,6 +4,7 @@ numpy>=2.0,<3
 pandas>=2.2,<3
 scikit-learn>=1.5,<2
 rasterio>=1.4,<2
+pyproj>=3.7,<4
 Pillow>=10,<13
 pydantic>=2.8,<3
 sqlalchemy>=2.0,<3
