@@ -19,3 +19,5 @@ dist/
 
 # Generated validation outputs
 outputs/
+*.sql
+project_data/current/project_state.json
