@@ -3,6 +3,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs
 import xml.etree.ElementTree as ET
 
 
@@ -20,6 +21,69 @@ def find_google_earth():
             return path
 
     return None
+
+
+def parse_arguments():
+    """
+    Supports both:
+
+    1. Direct command:
+       launcher.exe 28.6139 77.2090 33
+
+    2. URBANFLOW protocol:
+       launcher.exe "urbanflow://open?lat=28.6139&lon=77.2090&point=33"
+    """
+
+    if len(sys.argv) == 2:
+        protocol_url = sys.argv[1]
+
+        parsed = urlparse(protocol_url)
+
+        if parsed.scheme.lower() != "urbanflow":
+            raise ValueError("Invalid URBANFLOW protocol.")
+
+        if parsed.netloc.lower() != "open":
+            raise ValueError("Invalid URBANFLOW protocol action.")
+
+        query = parse_qs(parsed.query)
+
+        try:
+            latitude = float(query["lat"][0])
+            longitude = float(query["lon"][0])
+            point_index = int(query["point"][0])
+        except (KeyError, ValueError, IndexError):
+            raise ValueError(
+                "Invalid latitude, longitude or point index."
+            )
+
+    elif len(sys.argv) == 4:
+        try:
+            latitude = float(sys.argv[1])
+            longitude = float(sys.argv[2])
+            point_index = int(sys.argv[3])
+        except ValueError:
+            raise ValueError(
+                "Invalid coordinates or point index."
+            )
+
+    else:
+        raise ValueError(
+            "Usage:\n"
+            "launcher.exe <latitude> <longitude> <point_index>\n"
+            "or\n"
+            "launcher.exe \"urbanflow://open?lat=...&lon=...&point=...\""
+        )
+
+    if not -90 <= latitude <= 90:
+        raise ValueError("Latitude is outside the valid range.")
+
+    if not -180 <= longitude <= 180:
+        raise ValueError("Longitude is outside the valid range.")
+
+    if point_index < 0:
+        raise ValueError("Point index cannot be negative.")
+
+    return latitude, longitude, point_index
 
 
 def create_kml(latitude, longitude, point_index):
@@ -95,18 +159,10 @@ def create_kml(latitude, longitude, point_index):
 
 
 def main():
-    if len(sys.argv) != 4:
-        print(
-            "Usage: launcher.py <latitude> <longitude> <point_index>"
-        )
-        sys.exit(1)
-
     try:
-        latitude = float(sys.argv[1])
-        longitude = float(sys.argv[2])
-        point_index = int(sys.argv[3])
-    except ValueError:
-        print("Invalid coordinates or point index.")
+        latitude, longitude, point_index = parse_arguments()
+    except ValueError as error:
+        print(error)
         sys.exit(1)
 
     google_earth = find_google_earth()

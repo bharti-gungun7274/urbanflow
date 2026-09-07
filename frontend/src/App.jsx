@@ -11,7 +11,6 @@ import {
   getValidationResults,
   exportValidation,
   getHistory,
-  openGoogleEarth,
 } from "./api";
 
 /* =========================================================
@@ -1231,47 +1230,44 @@ function ValidationPage() {
   ======================================================= */
 
   async function handleGoogleEarthPro() {
-    if (!currentPoint) return;
+  if (!currentPoint) return;
 
-    const pointId =
-      Number(currentPoint.index);
+  const pointId = Number(currentPoint.index);
+  const latitude = Number(currentPoint.latitude);
+  const longitude = Number(currentPoint.longitude);
 
-    if (!Number.isFinite(pointId)) {
-      setMessage(
-        "Invalid validation point ID."
-      );
-
-      return;
-    }
-
-    try {
-      setMessage(
-        "Opening current point in Google Earth Pro..."
-      );
-
-      const result =
-        await openGoogleEarth(
-          pointId
-        );
-
-      setMessage(
-        result?.message ||
-          `Google Earth Pro opened for Point ${
-            currentIndex + 1
-          }.`
-      );
-    } catch (error) {
-      console.error(
-        "URBANFLOW Google Earth Pro error:",
-        error
-      );
-
-      setMessage(
-        error?.message ||
-          "Could not open Google Earth Pro. Make sure the URBANFLOW backend is running locally."
-      );
-    }
+  if (
+    !Number.isFinite(pointId) ||
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude)
+  ) {
+    setMessage("Invalid validation point coordinates.");
+    return;
   }
+
+  const earthUrl =
+    `urbanflow://open?lat=${encodeURIComponent(latitude)}` +
+    `&lon=${encodeURIComponent(longitude)}` +
+    `&point=${encodeURIComponent(pointId)}`;
+
+  try {
+    setMessage(
+      `Opening Point ${pointId + 1} in Google Earth Pro...`
+    );
+
+    window.location.href = earthUrl;
+
+  } catch (error) {
+    console.error(
+      "URBANFLOW Google Earth Pro error:",
+      error
+    );
+
+    setMessage(
+      "Could not open Google Earth Pro."
+    );
+  }
+}
 
   /* =======================================================
   PROGRESS
