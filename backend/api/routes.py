@@ -1,5 +1,6 @@
 from pathlib import Path
 import shutil
+import json
 
 import pandas as pd
 
@@ -33,11 +34,6 @@ from backend.services.google_earth_service import (
 from backend.services.history_service import (
     load_history,
     save_history_record,
-)
-
-from backend.services.validation_session_service import (
-    load_session,
-    save_point as save_session_point,
 )
 
 
@@ -112,21 +108,8 @@ PROJECT_STATE_FILE = (
 
 
 # ============================================================
-# VALIDATION SESSION HELPERS
+# VALIDATION HELPERS
 # ============================================================
-
-def _session():
-
-    if not state.area or not state.year:
-        return {
-            "validated_points": {}
-        }
-
-    return load_session(
-        state.area,
-        int(state.year)
-    )
-
 
 def _validated_indices():
 
@@ -136,11 +119,16 @@ def _validated_indices():
     db = SessionLocal()
 
     try:
+
         records = (
-            db.query(ValidationRecord.point_id)
+            db.query(
+                ValidationRecord.point_id
+            )
             .filter(
                 ValidationRecord.area == state.area,
-                ValidationRecord.year == int(state.year),
+                ValidationRecord.year == int(
+                    state.year
+                ),
             )
             .all()
         )
@@ -151,20 +139,23 @@ def _validated_indices():
         }
 
     finally:
+
         db.close()
 
 
-def _apply_saved_validation_session(
+def _apply_database_validations(
     df: pd.DataFrame
 ) -> pd.DataFrame:
 
     """
-    Restore saved reference labels/sources
-    from the persistent validation session.
+    Restore validated reference classes and sources
+    directly from PostgreSQL.
 
-    This makes validation survive browser navigation,
-    frontend refreshes, backend restarts, and
-    reopening the same project files later.
+    PostgreSQL is the single source of truth
+    for validation data.
+
+    Old JSON validation-session values are NOT used
+    to overwrite the dataframe.
     """
 
     if (
@@ -174,62 +165,51 @@ def _apply_saved_validation_session(
     ):
         return df
 
-    session = load_session(
-        state.area,
-        int(state.year)
-    )
+    db = SessionLocal()
 
-    saved_points = session.get(
-        "validated_points",
-        {}
-    )
+    try:
 
-    if not isinstance(
-        saved_points,
-        dict
-    ):
-        return df
+        records = (
+            db.query(
+                ValidationRecord
+            )
+            .filter(
+                ValidationRecord.area == state.area,
+                ValidationRecord.year == int(
+                    state.year
+                ),
+            )
+            .all()
+        )
 
-    for key, saved in saved_points.items():
+        for record in records:
 
-        try:
+            point_id = int(
+                record.point_id
+            )
 
-            point_id = int(key)
-
-            if (
-                point_id not in df.index
-                or not isinstance(saved, dict)
-            ):
+            if point_id not in df.index:
                 continue
 
-            if "reference_class" in saved:
+            df.at[
+                point_id,
+                "Reference_Class"
+            ] = int(
+                record.reference_class
+            )
 
-                df.at[
-                    point_id,
-                    "Reference_Class"
-                ] = int(
-                    saved["reference_class"]
-                )
+            df.at[
+                point_id,
+                "Reference_Source"
+            ] = str(
+                record.reference_source
+            )
 
-            if "reference_source" in saved:
+        return df
 
-                df.at[
-                    point_id,
-                    "Reference_Source"
-                ] = str(
-                    saved.get(
-                        "reference_source",
-                        ""
-                    )
-                )
+    finally:
 
-        except (
-            TypeError,
-            ValueError
-        ):
-            continue
-
-    return df
+        db.close()
 
 
 # ============================================================
@@ -245,8 +225,6 @@ def _restore_project_if_possible():
         return
 
     try:
-
-        import json
 
         data = json.loads(
             PROJECT_STATE_FILE.read_text(
@@ -293,7 +271,10 @@ def _restore_project_if_possible():
             data["year"]
         )
 
-        df = _apply_saved_validation_session(
+        # IMPORTANT:
+        # Restore validation labels from PostgreSQL,
+        # not from the old JSON session.
+        df = _apply_database_validations(
             df
         )
 
@@ -422,7 +403,9 @@ async def load_project(
             year
         )
 
-        df = _apply_saved_validation_session(
+        # IMPORTANT:
+        # Restore any existing validations from PostgreSQL.
+        df = _apply_database_validations(
             df
         )
 
@@ -435,8 +418,6 @@ async def load_project(
             str(lulc_path),
             str(reference_path)
         )
-
-        import json
 
         PROJECT_STATE_FILE.write_text(
             json.dumps(
@@ -527,6 +508,8 @@ def get_points():
 
     records = []
 
+    validated_indices = _validated_indices()
+
     for index, row in state.points.iterrows():
 
         dw = row.get(
@@ -595,7 +578,7 @@ def get_points():
 
                 "validated": (
                     int(index)
-                    in _validated_indices()
+                    in validated_indices
                 ),
 
                 "validation_status": (
@@ -604,7 +587,7 @@ def get_points():
 
                     if (
                         int(index)
-                        in _validated_indices()
+                        in validated_indices
                     )
 
                     else "Not validated"
@@ -716,10 +699,17 @@ def update_reference(
     "/points/{index}/validate"
 )
 def validate_point(
+
     index: int,
+
     request: ValidationRequest,
-    current_user=Depends(get_current_user),
+
+    current_user=Depends(
+        get_current_user
+    ),
+
 ):
+
     """
     Save validation permanently in PostgreSQL.
 
@@ -735,21 +725,29 @@ def validate_point(
     _restore_project_if_possible()
 
     if state.points.empty:
+
         raise HTTPException(
             status_code=400,
             detail="No validation points loaded.",
         )
 
     if index not in state.points.index:
+
         raise HTTPException(
             status_code=404,
             detail=f"Point {index + 1} not found.",
         )
 
-    if not 0 <= int(request.reference_class) <= 8:
+    if not 0 <= int(
+        request.reference_class
+    ) <= 8:
+
         raise HTTPException(
             status_code=400,
-            detail="Reference class must be between 0 and 8.",
+            detail=(
+                "Reference class must be "
+                "between 0 and 8."
+            ),
         )
 
     source = str(
@@ -757,19 +755,33 @@ def validate_point(
     ).strip()
 
     if not source:
+
         raise HTTPException(
             status_code=400,
-            detail="A Reference Source is required before validation.",
+            detail=(
+                "A Reference Source is required "
+                "before validation."
+            ),
         )
 
     # --------------------------------------------------------
     # Get logged-in user
     # --------------------------------------------------------
 
-    if isinstance(current_user, dict):
-        user_id = int(current_user["id"])
+    if isinstance(
+        current_user,
+        dict
+    ):
+
+        user_id = int(
+            current_user["id"]
+        )
+
     else:
-        user_id = int(current_user.id)
+
+        user_id = int(
+            current_user.id
+        )
 
     # --------------------------------------------------------
     # Save validation in PostgreSQL
@@ -778,13 +790,26 @@ def validate_point(
     db = SessionLocal()
 
     try:
+
         existing = (
-            db.query(ValidationRecord)
-            .filter(
-                ValidationRecord.area == state.area,
-                ValidationRecord.year == int(state.year),
-                ValidationRecord.point_id == int(index),
+
+            db.query(
+                ValidationRecord
             )
+
+            .filter(
+
+                ValidationRecord.area
+                == state.area,
+
+                ValidationRecord.year
+                == int(state.year),
+
+                ValidationRecord.point_id
+                == int(index),
+
+            )
+
             .first()
         )
 
@@ -792,37 +817,63 @@ def validate_point(
 
             # Save previous state in history
             history = ValidationHistory(
+
                 area=existing.area,
+
                 year=existing.year,
+
                 point_id=existing.point_id,
-                reference_class=existing.reference_class,
-                reference_source=existing.reference_source,
-                changed_by=existing.validated_by,
+
+                reference_class=(
+                    existing.reference_class
+                ),
+
+                reference_source=(
+                    existing.reference_source
+                ),
+
+                changed_by=(
+                    existing.validated_by
+                ),
+
             )
 
-            db.add(history)
+            db.add(
+                history
+            )
 
             # Update existing validation
             existing.reference_class = int(
                 request.reference_class
             )
+
             existing.reference_source = source
+
             existing.validated_by = user_id
 
         else:
 
             record = ValidationRecord(
+
                 area=state.area,
+
                 year=int(state.year),
+
                 point_id=int(index),
+
                 reference_class=int(
                     request.reference_class
                 ),
+
                 reference_source=source,
+
                 validated_by=user_id,
+
             )
 
-            db.add(record)
+            db.add(
+                record
+            )
 
         db.commit()
 
@@ -832,34 +883,48 @@ def validate_point(
 
         raise HTTPException(
             status_code=500,
-            detail=f"Database validation error: {exc}",
+            detail=(
+                f"Database validation error: {exc}"
+            ),
         )
 
     finally:
+
         db.close()
 
     # --------------------------------------------------------
-    # Keep existing local project state updated
+    # Keep current project state updated
     # --------------------------------------------------------
 
     state.points = update_reference_class(
         state.points,
         index,
-        int(request.reference_class),
+        int(
+            request.reference_class
+        ),
         source,
     )
 
     return {
+
         "status": "success",
+
         "validated": True,
+
         "validation_status": "Validated",
+
         "index": int(index),
+
         "reference_class": int(
             request.reference_class
         ),
+
         "reference_source": source,
+
         "validated_by": user_id,
+
     }
+
 
 # ============================================================
 # RASTER WINDOW
@@ -938,6 +1003,7 @@ def raster_window(
             "crs": result["crs"],
 
             "transform": result["transform"],
+
         }
 
     except Exception as exc:
@@ -1008,6 +1074,7 @@ def google_earth(index: int):
                 if pd.notna(ref)
                 else None
             ),
+
         )
 
     except Exception as exc:
@@ -1038,13 +1105,35 @@ def validation_results():
 
     try:
 
-        validated = (
-            _validated_indices()
+        # ----------------------------------------------------
+        # Get validated point IDs from PostgreSQL
+        # ----------------------------------------------------
+
+        validated = _validated_indices()
+
+        # ----------------------------------------------------
+        # CRITICAL:
+        # Refresh reference classes directly from PostgreSQL
+        # before calculating metrics.
+        # ----------------------------------------------------
+
+        current_points = (
+            state.points.copy()
         )
 
+        current_points = (
+            _apply_database_validations(
+                current_points
+            )
+        )
+
+        # ----------------------------------------------------
+        # Keep ONLY explicitly validated points
+        # ----------------------------------------------------
+
         validated_df = (
-            state.points.loc[
-                state.points.index.isin(
+            current_points.loc[
+                current_points.index.isin(
                     validated
                 )
             ].copy()
@@ -1068,7 +1157,12 @@ def validation_results():
                 ],
 
                 "class_metrics": [],
+
             }
+
+        # ----------------------------------------------------
+        # Calculate metrics using the refreshed dataframe
+        # ----------------------------------------------------
 
         result = calculate_metrics(
             validated_df
@@ -1111,7 +1205,9 @@ def validation_results():
                     "user_accuracy": item[
                         "User_Accuracy"
                     ],
+
                 }
+
             )
 
         return {
@@ -1141,6 +1237,7 @@ def validation_results():
             ),
 
             "class_metrics": class_metrics,
+
         }
 
     except Exception as exc:
@@ -1171,13 +1268,35 @@ def export_validation():
 
     try:
 
+        # ----------------------------------------------------
+        # Get validated point IDs from PostgreSQL
+        # ----------------------------------------------------
+
         validated = (
             _validated_indices()
         )
 
+        # ----------------------------------------------------
+        # Refresh reference labels from PostgreSQL
+        # ----------------------------------------------------
+
+        current_points = (
+            state.points.copy()
+        )
+
+        current_points = (
+            _apply_database_validations(
+                current_points
+            )
+        )
+
+        # ----------------------------------------------------
+        # Keep ONLY explicitly validated points
+        # ----------------------------------------------------
+
         validated_df = (
-            state.points.loc[
-                state.points.index.isin(
+            current_points.loc[
+                current_points.index.isin(
                     validated
                 )
             ].copy()
@@ -1192,6 +1311,10 @@ def export_validation():
                     "points to export."
                 ),
             )
+
+        # ----------------------------------------------------
+        # Calculate metrics
+        # ----------------------------------------------------
 
         result = calculate_metrics(
             validated_df
@@ -1269,6 +1392,7 @@ def export_validation():
                         result[
                             "correct_samples"
                         ],
+
                 }
             ]
         ).to_csv(
@@ -1295,7 +1419,10 @@ def export_validation():
                     "overall_accuracy"
                 ],
 
-                result["kappa"],
+                result[
+                    "kappa"
+                ],
+
             )
         )
 
@@ -1318,10 +1445,12 @@ def export_validation():
                 class_accuracy_csv.name,
 
                 overall_csv.name,
+
             ],
 
             "history":
                 history_record,
+
         }
 
     except Exception as exc:
@@ -1369,6 +1498,7 @@ def _class_name(value):
         7: "Bare Land",
 
         8: "Snow/Ice",
+
     }
 
     try:

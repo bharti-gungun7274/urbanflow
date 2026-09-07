@@ -2,27 +2,23 @@ const API_BASE =
   import.meta.env.VITE_API_BASE_URL ||
   "http://127.0.0.1:8000/api";
 
+/* ============================================================
+   GENERIC API REQUEST
+   ============================================================ */
 
 async function request(url, options = {}) {
-
   const token = localStorage.getItem(
     "urbanflow_access_token"
   );
-
 
   const headers = {
     ...(options.headers || {}),
   };
 
-
-  // ----------------------------------------------------------
-  // Add JWT authentication to every protected API request
-  // ----------------------------------------------------------
-
+  // Add JWT authentication to protected API requests
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
-
 
   const response = await fetch(
     `${API_BASE}${url}`,
@@ -32,11 +28,7 @@ async function request(url, options = {}) {
     }
   );
 
-
-  // ----------------------------------------------------------
   // Read response safely
-  // ----------------------------------------------------------
-
   let data = null;
 
   try {
@@ -45,13 +37,8 @@ async function request(url, options = {}) {
     data = null;
   }
 
-
-  // ----------------------------------------------------------
   // Authentication failure
-  // ----------------------------------------------------------
-
   if (response.status === 401) {
-
     localStorage.removeItem(
       "urbanflow_access_token"
     );
@@ -65,27 +52,20 @@ async function request(url, options = {}) {
     );
   }
 
-
-  // ----------------------------------------------------------
   // Other API errors
-  // ----------------------------------------------------------
-
   if (!response.ok) {
-
     throw new Error(
       data?.detail ||
-      `Request failed with status ${response.status}`
+        `Request failed with status ${response.status}`
     );
   }
-
 
   return data;
 }
 
-
-// ============================================================
-// PROJECT
-// ============================================================
+/* ============================================================
+   PROJECT
+   ============================================================ */
 
 export async function loadProject({
   studyArea,
@@ -94,39 +74,32 @@ export async function loadProject({
   pointsFile,
   referenceFile,
 }) {
-
   const formData = new FormData();
-
 
   formData.append(
     "study_area",
     studyArea
   );
 
-
   formData.append(
     "year",
     year
   );
-
 
   formData.append(
     "lulc_file",
     lulcFile
   );
 
-
   formData.append(
     "points_file",
     pointsFile
   );
 
-
   formData.append(
     "reference_file",
     referenceFile
   );
-
 
   return request(
     "/project/load",
@@ -137,61 +110,49 @@ export async function loadProject({
   );
 }
 
-
 export async function getProjectInfo() {
-
   return request(
     "/project/info"
   );
 }
 
-
-// ============================================================
-// VALIDATION POINTS
-// ============================================================
+/* ============================================================
+   VALIDATION POINTS
+   ============================================================ */
 
 export async function getPoints() {
-
   return request(
     "/points"
   );
 }
 
-
-export async function getPoint(
-  index
-) {
-
+export async function getPoint(index) {
   return request(
     `/points/${index}`
   );
 }
 
-
-// ============================================================
-// REFERENCE CLASS
-// ============================================================
+/* ============================================================
+   REFERENCE CLASS
+   ============================================================ */
 
 export async function updateReferenceClass(
   index,
   referenceClass,
   referenceSource
 ) {
-
   return request(
     `/points/${index}/reference`,
     {
       method: "PUT",
 
       headers: {
-        "Content-Type":
-          "application/json",
+        "Content-Type": "application/json",
       },
 
       body: JSON.stringify({
-
         reference_class:
-          referenceClass,
+          Number(referenceClass),
 
         reference_source:
           referenceSource,
@@ -200,10 +161,38 @@ export async function updateReferenceClass(
   );
 }
 
+/* ============================================================
+   VALIDATE POINT
+   ============================================================ */
 
-// ============================================================
-// RASTER
-// ============================================================
+export async function validatePoint(
+  index,
+  referenceClass,
+  referenceSource
+) {
+  return request(
+    `/points/${index}/validate`,
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify({
+        reference_class:
+          Number(referenceClass),
+
+        reference_source:
+          referenceSource,
+      }),
+    }
+  );
+}
+
+/* ============================================================
+   RASTER
+   ============================================================ */
 
 export async function getRasterWindow(
   kind,
@@ -211,45 +200,29 @@ export async function getRasterWindow(
   latitude,
   radiusPixels = 80
 ) {
-
-  const params =
-    new URLSearchParams({
-
-      kind,
-
-      longitude,
-
-      latitude,
-
-      radius_pixels:
-        radiusPixels,
-    });
-
+  const params = new URLSearchParams({
+    kind,
+    longitude,
+    latitude,
+    radius_pixels: radiusPixels,
+  });
 
   return request(
     `/raster/window?${params.toString()}`
   );
 }
 
-
-export async function getRasterInfo(
-  kind
-) {
-
+export async function getRasterInfo(kind) {
   return request(
     `/raster/info?kind=${kind}`
   );
 }
 
+/* ============================================================
+   GOOGLE EARTH
+   ============================================================ */
 
-// ============================================================
-// GOOGLE EARTH
-// ============================================================
-
-export async function openGoogleEarth(
-  index
-) {
-
+export async function openGoogleEarth(index) {
   return request(
     `/points/${index}/google-earth`,
     {
@@ -258,89 +231,40 @@ export async function openGoogleEarth(
   );
 }
 
-
-// ============================================================
-// VALIDATION RESULTS
-// ============================================================
+/* ============================================================
+   VALIDATION RESULTS
+   ============================================================ */
 
 export async function getValidationResults() {
-
   return request(
     "/validation/results"
   );
 }
 
-
 export async function exportValidation() {
-  const token = localStorage.getItem(
-    "urbanflow_access_token"
-  );
-
-  const response = await fetch(
-    `${API_BASE}/validation/export`,
+  return request(
+    "/validation/export",
     {
       method: "POST",
-      headers: {
-        ...(token
-          ? {
-              Authorization: `Bearer ${token}`,
-            }
-          : {}),
-      },
     }
   );
-
-  let data = null;
-
-  try {
-    data = await response.json();
-  } catch {
-    data = null;
-  }
-
-  if (response.status === 401) {
-    localStorage.removeItem(
-      "urbanflow_access_token"
-    );
-
-    localStorage.removeItem(
-      "urbanflow_user"
-    );
-
-    throw new Error(
-      "Your login session has expired. Please sign in again."
-    );
-  }
-
-  if (!response.ok) {
-    throw new Error(
-      data?.detail ||
-        `Export failed with status ${response.status}`
-    );
-  }
-
-  return data;
 }
 
-
-// ============================================================
-// HISTORY
-// ============================================================
+/* ============================================================
+   HISTORY
+   ============================================================ */
 
 export async function getHistory() {
-
   return request(
     "/history"
   );
 }
 
-
-// ============================================================
-// HEALTH
-// ============================================================
+/* ============================================================
+   HEALTH
+   ============================================================ */
 
 export async function healthCheck() {
-
   return request(
     "/health"
   );
