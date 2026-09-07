@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import "./App.css";
 import Login from "./Login";
 
@@ -507,6 +507,34 @@ function FileSelector({
   setFile,
   accept,
 }) {
+  const inputRef = useRef(null);
+
+  function handleBrowse() {
+    if (inputRef.current) {
+      inputRef.current.value = "";
+      inputRef.current.click();
+    }
+  }
+
+  function handleFileChange(event) {
+    const selectedFile =
+      event.target.files &&
+      event.target.files.length > 0
+        ? event.target.files[0]
+        : null;
+
+    if (selectedFile) {
+      console.log(
+        "URBANFLOW selected file:",
+        selectedFile.name,
+        selectedFile.type,
+        selectedFile.size
+      );
+    }
+
+    setFile(selectedFile);
+  }
+
   return (
     <div className="file-field">
       <label>{label}</label>
@@ -518,20 +546,25 @@ function FileSelector({
             : "No file selected"}
         </div>
 
-        <label className="browse-button">
+        <button
+          type="button"
+          className="browse-button"
+          onClick={handleBrowse}
+        >
           Browse
+        </button>
 
-          <input
-            type="file"
-            accept={accept}
-            onChange={(event) => {
-              setFile(
-                event.target.files?.[0] ||
-                null
-              );
-            }}
-          />
-        </label>
+        <input
+          ref={inputRef}
+          type="file"
+          accept={
+            label === "VALIDATION POINTS"
+              ? ".csv,text/csv"
+              : accept
+          }
+          onChange={handleFileChange}
+          style={{ display: "none" }}
+        />
       </div>
     </div>
   );
@@ -1371,7 +1404,13 @@ function ValidationPage() {
           <FileSelector
             label="VALIDATION POINTS"
             file={pointsFile}
-            setFile={pointsFile}
+            
+            /* FIXED:
+               This must be the setter function,
+               not the current file value.
+            */
+            setFile={setPointsFile}
+            
             accept=".csv"
           />
 
