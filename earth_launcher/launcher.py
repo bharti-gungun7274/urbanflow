@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 import xml.etree.ElementTree as ET
+import ctypes
 
 
 GOOGLE_EARTH_PATHS = [
@@ -19,7 +20,6 @@ def find_google_earth():
     for path in GOOGLE_EARTH_PATHS:
         if path.exists():
             return path
-
     return None
 
 
@@ -52,9 +52,7 @@ def parse_arguments():
             longitude = float(query["lon"][0])
             point_index = int(query["point"][0])
         except (KeyError, ValueError, IndexError):
-            raise ValueError(
-                "Invalid latitude, longitude or point index."
-            )
+            raise ValueError("Invalid latitude, longitude or point index.")
 
     elif len(sys.argv) == 4:
         try:
@@ -62,16 +60,15 @@ def parse_arguments():
             longitude = float(sys.argv[2])
             point_index = int(sys.argv[3])
         except ValueError:
-            raise ValueError(
-                "Invalid coordinates or point index."
-            )
+            raise ValueError("Invalid coordinates or point index.")
 
     else:
         raise ValueError(
             "Usage:\n"
             "launcher.exe <latitude> <longitude> <point_index>\n"
             "or\n"
-            "launcher.exe \"urbanflow://open?lat=...&lon=...&point=...\""
+            "launcher.exe "
+            "\"urbanflow://open?lat=...&lon=...&point=...\""
         )
 
     if not -90 <= latitude <= 90:
@@ -89,7 +86,7 @@ def parse_arguments():
 def create_kml(latitude, longitude, point_index):
     root = ET.Element(
         "kml",
-        {"xmlns": "http://www.opengis.net/kml/2.2"},
+        {"xmlns": "http://www.opengis.net/kml/2.2"}
     )
 
     document = ET.SubElement(root, "Document")
@@ -112,9 +109,7 @@ def create_kml(latitude, longitude, point_index):
     point = ET.SubElement(placemark, "Point")
 
     coordinates = ET.SubElement(point, "coordinates")
-    coordinates.text = (
-        f"{longitude:.8f},{latitude:.8f},0"
-    )
+    coordinates.text = f"{longitude:.8f},{latitude:.8f},0"
 
     look_at = ET.SubElement(placemark, "LookAt")
 
@@ -136,13 +131,11 @@ def create_kml(latitude, longitude, point_index):
 
     temp_directory.mkdir(
         parents=True,
-        exist_ok=True,
+        exist_ok=True
     )
 
     filename = (
-        f"urbanflow_point_"
-        f"{point_index}_"
-        f"{int(time.time())}.kml"
+        f"urbanflow_point_{point_index}_{int(time.time())}.kml"
     )
 
     kml_path = temp_directory / filename
@@ -152,15 +145,76 @@ def create_kml(latitude, longitude, point_index):
     tree.write(
         kml_path,
         encoding="utf-8",
-        xml_declaration=True,
+        xml_declaration=True
     )
 
     return kml_path
 
 
+def bring_google_earth_to_front():
+    """
+    Bring the main Google Earth Pro window to the foreground.
+    """
+
+    user32 = ctypes.windll.user32
+
+    SW_RESTORE = 9
+
+    def enum_windows_callback(hwnd, lparam):
+        if not user32.IsWindowVisible(hwnd):
+            return True
+
+        length = user32.GetWindowTextLengthW(hwnd)
+
+        if length == 0:
+            return True
+
+        buffer = ctypes.create_unicode_buffer(length + 1)
+
+        user32.GetWindowTextW(
+            hwnd,
+            buffer,
+            length + 1
+        )
+
+        title = buffer.value.strip().lower()
+
+        # Ignore Google Earth secondary/dialog windows.
+        ignored_titles = [
+            "mutate view",
+            "options",
+            "preferences",
+            "print",
+            "about google earth",
+        ]
+
+        if any(
+            ignored in title
+            for ignored in ignored_titles
+        ):
+            return True
+
+        # The main Google Earth Pro window normally has
+        # "Google Earth Pro" in its title.
+        if "google earth pro" in title:
+            user32.ShowWindow(hwnd, SW_RESTORE)
+            user32.SetForegroundWindow(hwnd)
+            return False
+
+        return True
+
+    callback = ctypes.WINFUNCTYPE(
+        ctypes.c_bool,
+        ctypes.c_void_p,
+        ctypes.c_void_p
+    )(enum_windows_callback)
+
+    user32.EnumWindows(callback, 0)
+
 def main():
     try:
         latitude, longitude, point_index = parse_arguments()
+
     except ValueError as error:
         print(error)
         sys.exit(1)
@@ -176,21 +230,27 @@ def main():
     kml_path = create_kml(
         latitude,
         longitude,
-        point_index,
+        point_index
     )
 
     subprocess.Popen(
         [
             str(google_earth),
-            str(kml_path),
+            str(kml_path)
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
 
+    # Give Google Earth a moment to receive/open the KML.
+    time.sleep(1.0)
+
+    # Bring Google Earth Pro to the foreground.
+    bring_google_earth_to_front()
+
     print(
-        f"Google Earth Pro opened at URBANFLOW Point "
-        f"{point_index + 1}."
+        f"Google Earth Pro opened at "
+        f"URBANFLOW Point {point_index + 1}."
     )
 
 
