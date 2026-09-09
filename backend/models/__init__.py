@@ -80,10 +80,11 @@ class ValidationRecord(Base):
 
     __table_args__ = (
         UniqueConstraint(
+            "validated_by",
             "area",
             "year",
             "point_id",
-            name="uq_validation_point",
+            name="uq_validation_user_area_year_point",
         ),
     )
 
@@ -117,13 +118,13 @@ class ValidationHistory(Base):
         nullable=False,
     )
 
-    reference_source: Mapped[str] = mapped_column(
-        String(200),
+    changed_by: Mapped[int] = mapped_column(
+        Integer,
         nullable=False,
     )
 
-    changed_by: Mapped[int] = mapped_column(
-        Integer,
+    reference_source: Mapped[str] = mapped_column(
+        String(200),
         nullable=False,
     )
 

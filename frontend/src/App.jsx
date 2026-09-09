@@ -1,21 +1,26 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import "./App.css";
 import Login from "./Login";
 
 import {
   loadProject,
-  getProjectInfo,
   getPoints,
   getRasterWindow,
   validatePoint,
   getValidationResults,
-  exportValidation,
   getHistory,
+  getActiveUsers,
+  heartbeatActiveUser,
+  downloadValidatedPoints,
+  downloadConfusionMatrix,
+  downloadClassAccuracy,
+  downloadValidationSummary,
+  downloadCompleteValidationPackage,
 } from "./api";
 
 /* =========================================================
-CONSTANTS
-========================================================= */
+   CONSTANTS
+   ========================================================= */
 
 const CLASSES = [
   { id: 0, name: "Water" },
@@ -32,13 +37,19 @@ const CLASSES = [
 const YEARS = ["2018", "2020", "2022", "2024"];
 
 function className(id) {
-  const item = CLASSES.find((item) => item.id === Number(id));
+  const item = CLASSES.find(
+    (item) => item.id === Number(id)
+  );
+
   return item ? item.name : "Not assigned";
 }
 
 function safeNumber(value, fallback = 0) {
   const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
+
+  return Number.isFinite(number)
+    ? number
+    : fallback;
 }
 
 function isValidatedPoint(point) {
@@ -49,8 +60,8 @@ function isValidatedPoint(point) {
 }
 
 /* =========================================================
-RASTER CANVAS
-========================================================= */
+   RASTER CANVAS
+   ========================================================= */
 
 function RasterCanvas({
   raster,
@@ -63,9 +74,11 @@ function RasterCanvas({
     if (!raster || !raster.data) return;
 
     const canvas = canvasRef.current;
+
     if (!canvas) return;
 
     const ctx = canvas.getContext("2d");
+
     if (!ctx) return;
 
     const data = raster.data;
@@ -118,11 +131,15 @@ function RasterCanvas({
       width <= 0 ||
       height <= 0
     ) {
-      console.error("URBANFLOW: Invalid raster size", {
-        width,
-        height,
-        raster,
-      });
+      console.error(
+        "URBANFLOW: Invalid raster size",
+        {
+          width,
+          height,
+          raster,
+        }
+      );
+
       return;
     }
 
@@ -132,12 +149,16 @@ function RasterCanvas({
     let imageData;
 
     try {
-      imageData = ctx.createImageData(width, height);
+      imageData = ctx.createImageData(
+        width,
+        height
+      );
     } catch (error) {
       console.error(
         "URBANFLOW: createImageData failed",
         error
       );
+
       return;
     }
 
@@ -161,23 +182,30 @@ function RasterCanvas({
 
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-          const pixel = (y * width + x) * 4;
+          const pixel =
+            (y * width + x) * 4;
 
-          const value = Number(data[y]?.[x]);
+          const value = Number(
+            data[y]?.[x]
+          );
 
-          const classValue = Number.isFinite(value)
-            ? value
-            : 255;
+          const classValue =
+            Number.isFinite(value)
+              ? value
+              : 255;
 
           const rgb =
-            colors[classValue] || [255, 255, 255];
+            colors[classValue] ||
+            [255, 255, 255];
 
           imageData.data[pixel] = rgb[0];
           imageData.data[pixel + 1] = rgb[1];
           imageData.data[pixel + 2] = rgb[2];
 
           imageData.data[pixel + 3] =
-            classValue === 255 ? 0 : 255;
+            classValue === 255
+              ? 0
+              : 255;
         }
       }
     }
@@ -200,17 +228,23 @@ function RasterCanvas({
         const stretched = Math.pow(
           Math.max(
             0,
-            Math.min(1, normalized)
+            Math.min(
+              1,
+              normalized
+            )
           ),
           0.75
         );
 
-        return Math.round(stretched * 255);
+        return Math.round(
+          stretched * 255
+        );
       };
 
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-          const pixel = (y * width + x) * 4;
+          const pixel =
+            (y * width + x) * 4;
 
           const red = Number(
             redBand[y]?.[x] ?? 0
@@ -238,7 +272,11 @@ function RasterCanvas({
       }
     }
 
-    ctx.putImageData(imageData, 0, 0);
+    ctx.putImageData(
+      imageData,
+      0,
+      0
+    );
 
     /* =====================================================
        POINT LOCATION
@@ -248,8 +286,10 @@ function RasterCanvas({
     let pointY;
 
     if (
-      raster.point_column !== undefined &&
-      raster.point_row !== undefined
+      raster.point_column !==
+        undefined &&
+      raster.point_row !==
+        undefined
     ) {
       pointX = Number(
         raster.point_column
@@ -259,20 +299,31 @@ function RasterCanvas({
         raster.point_row
       );
     } else if (
-      raster.column !== undefined &&
-      raster.row !== undefined &&
+      raster.column !==
+        undefined &&
+      raster.row !==
+        undefined &&
       raster.window
     ) {
       pointX =
         Number(raster.column) -
-        Number(raster.window.col_off);
+        Number(
+          raster.window.col_off
+        );
 
       pointY =
         Number(raster.row) -
-        Number(raster.window.row_off);
+        Number(
+          raster.window.row_off
+        );
     } else {
-      pointX = Math.floor(width / 2);
-      pointY = Math.floor(height / 2);
+      pointX = Math.floor(
+        width / 2
+      );
+
+      pointY = Math.floor(
+        height / 2
+      );
     }
 
     pointX = Math.max(
@@ -326,7 +377,9 @@ function RasterCanvas({
 
     ctx.stroke();
 
-    ctx.strokeStyle = "#000000";
+    ctx.strokeStyle =
+      "#000000";
+
     ctx.lineWidth = 2;
 
     ctx.beginPath();
@@ -353,7 +406,8 @@ function RasterCanvas({
 
     ctx.stroke();
 
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle =
+      "#ffffff";
 
     ctx.beginPath();
 
@@ -367,7 +421,9 @@ function RasterCanvas({
 
     ctx.fill();
 
-    ctx.strokeStyle = "#000000";
+    ctx.strokeStyle =
+      "#000000";
+
     ctx.lineWidth = 2;
 
     ctx.beginPath();
@@ -383,8 +439,11 @@ function RasterCanvas({
     ctx.stroke();
 
     ctx.restore();
-
-  }, [raster, type, pointNumber]);
+  }, [
+    raster,
+    type,
+    pointNumber,
+  ]);
 
   if (!raster) {
     return (
@@ -398,8 +457,8 @@ function RasterCanvas({
     1,
     Number(
       raster.width ??
-      raster.window?.width ??
-      1
+        raster.window?.width ??
+        1
     )
   );
 
@@ -407,8 +466,8 @@ function RasterCanvas({
     1,
     Number(
       raster.height ??
-      raster.window?.height ??
-      1
+        raster.window?.height ??
+        1
     )
   );
 
@@ -430,10 +489,13 @@ function RasterCanvas({
 }
 
 /* =========================================================
-HEADER
-========================================================= */
+   HEADER
+   ========================================================= */
 
-function Header({ page, setPage }) {
+function Header({
+  page,
+  setPage,
+}) {
   return (
     <header className="header">
       <div className="brand">
@@ -447,7 +509,8 @@ function Header({ page, setPage }) {
           </div>
 
           <div className="brand-subtitle">
-            YAMUNA URBANIZATION &amp; WATER QUALITY RESEARCH
+            YAMUNA URBANIZATION &amp;
+            WATER QUALITY RESEARCH
           </div>
         </div>
       </div>
@@ -491,14 +554,27 @@ function Header({ page, setPage }) {
         >
           History
         </button>
+
+        <button
+          className={
+            page === "active-users"
+              ? "nav-active"
+              : ""
+          }
+          onClick={() =>
+            setPage("active-users")
+          }
+        >
+          Active Users
+        </button>
       </nav>
     </header>
   );
 }
 
 /* =========================================================
-FILE SELECTOR
-========================================================= */
+   FILE SELECTOR
+   ========================================================= */
 
 function FileSelector({
   label,
@@ -506,37 +582,11 @@ function FileSelector({
   setFile,
   accept,
 }) {
-  const inputRef = useRef(null);
-
-  function handleBrowse() {
-    if (inputRef.current) {
-      inputRef.current.value = "";
-      inputRef.current.click();
-    }
-  }
-
-  function handleFileChange(event) {
-    const selectedFile =
-      event.target.files &&
-      event.target.files.length > 0
-        ? event.target.files[0]
-        : null;
-
-    if (selectedFile) {
-      console.log(
-        "URBANFLOW selected file:",
-        selectedFile.name,
-        selectedFile.type,
-        selectedFile.size
-      );
-    }
-
-    setFile(selectedFile);
-  }
-
   return (
     <div className="file-field">
-      <label>{label}</label>
+      <label>
+        {label}
+      </label>
 
       <div className="file-row">
         <div className="file-name">
@@ -545,33 +595,28 @@ function FileSelector({
             : "No file selected"}
         </div>
 
-        <button
-          type="button"
-          className="browse-button"
-          onClick={handleBrowse}
-        >
+        <label className="browse-button">
           Browse
-        </button>
 
-        <input
-          ref={inputRef}
-          type="file"
-          accept={
-            label === "VALIDATION POINTS"
-              ? ".csv,text/csv"
-              : accept
-          }
-          onChange={handleFileChange}
-          style={{ display: "none" }}
-        />
+          <input
+            type="file"
+            accept={accept}
+            onChange={(event) => {
+              setFile(
+                event.target.files?.[0] ||
+                  null
+              );
+            }}
+          />
+        </label>
       </div>
     </div>
   );
 }
 
 /* =========================================================
-POINT DRAWER
-========================================================= */
+   POINT DRAWER
+   ========================================================= */
 
 function PointDrawer({
   open,
@@ -581,7 +626,9 @@ function PointDrawer({
   setCurrentIndex,
 }) {
   const validatedCount =
-    points.filter(isValidatedPoint).length;
+    points.filter(
+      isValidatedPoint
+    ).length;
 
   return (
     <>
@@ -589,12 +636,13 @@ function PointDrawer({
         <div
           className="point-status-backdrop"
           onClick={onClose}
+          aria-hidden="true"
         />
       )}
 
       {open && (
         <aside
-          className="point-status-panel"
+          className="point-drawer open"
           aria-label="Validation point status"
         >
           <div className="point-drawer-header">
@@ -687,10 +735,25 @@ function PointDrawer({
                         onClose();
                       }}
                     >
+                      <span className="drawer-point-number">
+                        {index + 1}
+                      </span>
+
                       <span className="drawer-point-info">
                         <strong>
-                          Point {index + 1}
+                          Point{" "}
+                          {index + 1}
                         </strong>
+
+                        <small>
+                          {safeNumber(
+                            point.latitude
+                          ).toFixed(6)}
+                          ,{" "}
+                          {safeNumber(
+                            point.longitude
+                          ).toFixed(6)}
+                        </small>
                       </span>
 
                       <span
@@ -718,8 +781,8 @@ function PointDrawer({
 }
 
 /* =========================================================
-VALIDATION PAGE
-========================================================= */
+   VALIDATION PAGE
+   ========================================================= */
 
 function ValidationPage() {
   const [area, setArea] =
@@ -771,8 +834,8 @@ function ValidationPage() {
     points[currentIndex];
 
   /* =======================================================
-  LOAD PROJECT
-  ======================================================= */
+     LOAD PROJECT
+     ======================================================= */
 
   async function handleLoadProject() {
     if (
@@ -803,30 +866,38 @@ function ValidationPage() {
         await getPoints();
 
       const safePoints =
-        Array.isArray(loadedPoints)
+        Array.isArray(
+          loadedPoints
+        )
           ? loadedPoints
           : [];
 
-      setPoints(safePoints);
+      setPoints(
+        safePoints
+      );
 
       const storageKey =
         `urbanflow_current_point_${area}_${year}`;
 
-      const savedIndex = Number(
-        localStorage.getItem(
-          storageKey
-        )
-      );
+      const savedIndex =
+        Number(
+          localStorage.getItem(
+            storageKey
+          )
+        );
 
       const restoredIndex =
-        Number.isInteger(savedIndex)
+        Number.isInteger(
+          savedIndex
+        )
           ? Math.max(
               0,
               Math.min(
                 savedIndex,
                 Math.max(
                   0,
-                  safePoints.length - 1
+                  safePoints.length -
+                    1
                 )
               )
             )
@@ -855,8 +926,8 @@ function ValidationPage() {
   }
 
   /* =======================================================
-  LOAD CURRENT POINT RASTER
-  ======================================================= */
+     LOAD CURRENT POINT RASTER
+     ======================================================= */
 
   async function loadCurrentPoint(
     point
@@ -865,6 +936,7 @@ function ValidationPage() {
       setLulcRaster(null);
       setReferenceRaster(null);
       setReferenceClass(null);
+
       setReferenceSource(
         "Sentinel-2"
       );
@@ -877,14 +949,22 @@ function ValidationPage() {
       setMessage("");
 
       const longitude =
-        Number(point.longitude);
+        Number(
+          point.longitude
+        );
 
       const latitude =
-        Number(point.latitude);
+        Number(
+          point.latitude
+        );
 
       if (
-        !Number.isFinite(longitude) ||
-        !Number.isFinite(latitude)
+        !Number.isFinite(
+          longitude
+        ) ||
+        !Number.isFinite(
+          latitude
+        )
       ) {
         throw new Error(
           "Invalid validation point coordinates."
@@ -910,7 +990,9 @@ function ValidationPage() {
         ),
       ]);
 
-      setLulcRaster(lulc);
+      setLulcRaster(
+        lulc
+      );
 
       setReferenceRaster(
         reference
@@ -921,10 +1003,14 @@ function ValidationPage() {
          ================================================= */
 
       const validated =
-        isValidatedPoint(point);
+        isValidatedPoint(
+          point
+        );
 
       const dwClass =
-        Number(point.dw_class);
+        Number(
+          point.dw_class
+        );
 
       const savedReference =
         point.reference_class !==
@@ -966,13 +1052,15 @@ function ValidationPage() {
           "Failed to load raster window."
       );
     } finally {
-      setRasterLoading(false);
+      setRasterLoading(
+        false
+      );
     }
   }
 
   /* =======================================================
-  POINT CHANGE + BROWSER PERSISTENCE
-  ======================================================= */
+     POINT CHANGE + BROWSER PERSISTENCE
+     ======================================================= */
 
   useEffect(() => {
     if (!points.length) return;
@@ -996,115 +1084,8 @@ function ValidationPage() {
   ]);
 
   /* =======================================================
-  RECOVER LOADED PROJECT / SESSION
-
-   IMPORTANT:
-   Do NOT use fetch("/api/project/info")
-   here because production frontend and backend
-   are hosted on different Render services.
-
-   getProjectInfo() already uses VITE_API_BASE_URL
-   and sends the JWT.
-   ======================================================= */
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function recoverProject() {
-      try {
-        const info =
-          await getProjectInfo();
-
-        if (
-          cancelled ||
-          !info?.points_loaded ||
-          !info?.total_points
-        ) {
-          return;
-        }
-
-        const recoveredPoints =
-          await getPoints();
-
-        if (
-          cancelled ||
-          !Array.isArray(
-            recoveredPoints
-          ) ||
-          !recoveredPoints.length
-        ) {
-          return;
-        }
-
-        const recoveredArea =
-          info.study_area ||
-          "Agra";
-
-        const recoveredYear =
-          String(
-            info.year || "2018"
-          );
-
-        const storageKey =
-          `urbanflow_current_point_${recoveredArea}_${recoveredYear}`;
-
-        const savedIndex = Number(
-          localStorage.getItem(
-            storageKey
-          )
-        );
-
-        const recoveredIndex =
-          Number.isInteger(
-            savedIndex
-          )
-            ? Math.max(
-                0,
-                Math.min(
-                  savedIndex,
-                  recoveredPoints.length -
-                    1
-                )
-              )
-            : 0;
-
-        setArea(
-          recoveredArea
-        );
-
-        setYear(
-          recoveredYear
-        );
-
-        setPoints(
-          recoveredPoints
-        );
-
-        setCurrentIndex(
-          recoveredIndex
-        );
-
-        setMessage(
-          `Recovered ${recoveredPoints.length} validation points. Previous review status restored.`
-        );
-      } catch (error) {
-        console.debug(
-          "URBANFLOW session recovery skipped:",
-          error
-        );
-      }
-    }
-
-    recoverProject();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  /* =======================================================
-  NAVIGATION
-  ======================================================= */
+     NAVIGATION
+     ======================================================= */
 
   function previousPoint() {
     setCurrentIndex(
@@ -1130,21 +1111,20 @@ function ValidationPage() {
   }
 
   /* =======================================================
-  SAVE + VALIDATE
-
-   IMPORTANT:
-   Validation is now handled through api.js.
-   No duplicate fetch() code belongs here.
-   ======================================================= */
+     SAVE + VALIDATE
+     ======================================================= */
 
   async function savePoint(
     goNext = false
   ) {
-    if (!currentPoint) return;
+    if (!currentPoint)
+      return;
 
     if (
-      referenceClass === null ||
-      referenceClass === undefined
+      referenceClass ===
+        null ||
+      referenceClass ===
+        undefined
     ) {
       setMessage(
         "Please select a Reference Class before saving."
@@ -1174,7 +1154,9 @@ function ValidationPage() {
       const updated =
         [...points];
 
-      updated[currentIndex] = {
+      updated[
+        currentIndex
+      ] = {
         ...updated[
           currentIndex
         ],
@@ -1193,7 +1175,9 @@ function ValidationPage() {
           "Validated",
       };
 
-      setPoints(updated);
+      setPoints(
+        updated
+      );
 
       setMessage(
         result?.message ||
@@ -1226,52 +1210,150 @@ function ValidationPage() {
   }
 
   /* =======================================================
-  GOOGLE EARTH PRO
-  ======================================================= */
+     GOOGLE EARTH PRO
+     ======================================================= */
 
-  async function handleGoogleEarthPro() {
-  if (!currentPoint) return;
+  function handleGoogleEarthPro() {
+    if (!currentPoint)
+      return;
 
-  const pointId = Number(currentPoint.index);
-  const latitude = Number(currentPoint.latitude);
-  const longitude = Number(currentPoint.longitude);
+    const pointId =
+      Number(
+        currentPoint.index
+      );
 
-  if (
-    !Number.isFinite(pointId) ||
-    !Number.isFinite(latitude) ||
-    !Number.isFinite(longitude)
-  ) {
-    setMessage("Invalid validation point coordinates.");
-    return;
+    const latitude =
+      Number(
+        currentPoint.latitude
+      );
+
+    const longitude =
+      Number(
+        currentPoint.longitude
+      );
+
+    if (
+      !Number.isFinite(
+        pointId
+      ) ||
+      !Number.isFinite(
+        latitude
+      ) ||
+      !Number.isFinite(
+        longitude
+      )
+    ) {
+      setMessage(
+        "Invalid validation point coordinates."
+      );
+
+      return;
+    }
+
+    const earthUrl =
+      `urbanflow://open?lat=${encodeURIComponent(
+        latitude
+      )}` +
+      `&lon=${encodeURIComponent(
+        longitude
+      )}` +
+      `&point=${encodeURIComponent(
+        pointId
+      )}`;
+
+    try {
+      setMessage(
+        `Opening Point ${
+          pointId + 1
+        } in Google Earth Pro...`
+      );
+
+      window.location.href =
+        earthUrl;
+    } catch (error) {
+      console.error(
+        "URBANFLOW Google Earth Pro error:",
+        error
+      );
+
+      setMessage(
+        "Could not open Google Earth Pro."
+      );
+    }
   }
-
-  const earthUrl =
-    `urbanflow://open?lat=${encodeURIComponent(latitude)}` +
-    `&lon=${encodeURIComponent(longitude)}` +
-    `&point=${encodeURIComponent(pointId)}`;
-
-  try {
-    setMessage(
-      `Opening Point ${pointId + 1} in Google Earth Pro...`
-    );
-
-    window.location.href = earthUrl;
-
-  } catch (error) {
-    console.error(
-      "URBANFLOW Google Earth Pro error:",
-      error
-    );
-
-    setMessage(
-      "Could not open Google Earth Pro."
-    );
-  }
-}
 
   /* =======================================================
-  PROGRESS
-  ======================================================= */
+     GOOGLE EARTH WEB
+     ======================================================= */
+
+  function handleGoogleEarthWeb() {
+    if (!currentPoint)
+      return;
+
+    const pointId =
+      Number(
+        currentPoint.index
+      );
+
+    const latitude =
+      Number(
+        currentPoint.latitude
+      );
+
+    const longitude =
+      Number(
+        currentPoint.longitude
+      );
+
+    if (
+      !Number.isFinite(
+        pointId
+      ) ||
+      !Number.isFinite(
+        latitude
+      ) ||
+      !Number.isFinite(
+        longitude
+      )
+    ) {
+      setMessage(
+        "Invalid validation point coordinates."
+      );
+
+      return;
+    }
+
+    const earthWebUrl =
+      `https://earth.google.com/web/@` +
+      `${latitude},${longitude},1000a,1000d,35y,0h,0t,0r`;
+
+    try {
+      setMessage(
+        `Opening Point ${
+          pointId + 1
+        } in Google Earth Web...`
+      );
+
+      window.open(
+        earthWebUrl,
+        "_blank",
+        "noopener,noreferrer"
+      );
+    } catch (error) {
+      console.error(
+        "URBANFLOW Google Earth Web error:",
+        error
+      );
+
+      setMessage(
+        "Could not open Google Earth Web."
+      );
+    }
+  }
+
+  /* =======================================================
+     PROGRESS
+     ======================================================= */
 
   const validatedCount =
     points.filter(
@@ -1286,17 +1368,18 @@ function ValidationPage() {
       : 0;
 
   /* =======================================================
-  UI
-  ======================================================= */
+     UI
+     ======================================================= */
 
   return (
     <div className="page">
-
       <PointDrawer
-        open={pointDrawerOpen}
+        open={
+          pointDrawerOpen
+        }
         onClose={() =>
           setPointDrawerOpen(
-            (value) => !value
+            false
           )
         }
         points={points}
@@ -1313,9 +1396,7 @@ function ValidationPage() {
          ================================================= */}
 
       <aside className="sidebar">
-
         <section className="sidebar-section compact-section">
-
           <h2>
             PROJECT CONFIGURATION
           </h2>
@@ -1368,7 +1449,6 @@ function ValidationPage() {
               )
             )}
           </select>
-
         </section>
 
         {/* =================================================
@@ -1376,7 +1456,6 @@ function ValidationPage() {
            ================================================= */}
 
         <section className="sidebar-section compact-section">
-
           <h2>
             DATA
           </h2>
@@ -1384,13 +1463,17 @@ function ValidationPage() {
           <FileSelector
             label="LULC GEOTIFF"
             file={lulcFile}
-            setFile={setLulcFile}
+            setFile={
+              setLulcFile
+            }
             accept=".tif,.tiff"
           />
 
           <FileSelector
             label="REFERENCE GEOTIFF"
-            file={referenceFile}
+            file={
+              referenceFile
+            }
             setFile={
               setReferenceFile
             }
@@ -1399,14 +1482,12 @@ function ValidationPage() {
 
           <FileSelector
             label="VALIDATION POINTS"
-            file={pointsFile}
-            
-            /* FIXED:
-               This must be the setter function,
-               not the current file value.
-            */
-            setFile={setPointsFile}
-            
+            file={
+              pointsFile
+            }
+            setFile={
+              setPointsFile
+            }
             accept=".csv"
           />
 
@@ -1415,13 +1496,14 @@ function ValidationPage() {
             onClick={
               handleLoadProject
             }
-            disabled={loading}
+            disabled={
+              loading
+            }
           >
             {loading
               ? "LOADING..."
               : "LOAD PROJECT"}
           </button>
-
         </section>
 
         {/* =================================================
@@ -1429,13 +1511,11 @@ function ValidationPage() {
            ================================================= */}
 
         <section className="sidebar-section compact-section validation-control-section">
-
           <h2>
             VALIDATION
           </h2>
 
           <div className="point-navigation">
-
             <button
               onClick={
                 previousPoint
@@ -1472,11 +1552,9 @@ function ValidationPage() {
             >
               Next
             </button>
-
           </div>
 
           <div className="progress-label">
-
             <span>
               Validation Progress
             </span>
@@ -1487,17 +1565,14 @@ function ValidationPage() {
               )}
               %
             </span>
-
           </div>
 
           <div className="progress">
-
             <div
               style={{
                 width: `${progress}%`,
               }}
             />
-
           </div>
 
           <button
@@ -1518,7 +1593,6 @@ function ValidationPage() {
               {points.length}
             </strong>
           </button>
-
         </section>
 
         {/* =================================================
@@ -1527,17 +1601,13 @@ function ValidationPage() {
 
         {currentPoint && (
           <>
-
             <section className="sidebar-section compact-section">
-
               <h2>
                 CURRENT POINT
               </h2>
 
               <div className="point-card">
-
                 <div className="point-row">
-
                   <span>
                     LAT
                   </span>
@@ -1547,11 +1617,9 @@ function ValidationPage() {
                       currentPoint.latitude
                     ).toFixed(6)}
                   </strong>
-
                 </div>
 
                 <div className="point-row">
-
                   <span>
                     LON
                   </span>
@@ -1561,11 +1629,9 @@ function ValidationPage() {
                       currentPoint.longitude
                     ).toFixed(6)}
                   </strong>
-
                 </div>
 
                 <div className="point-row">
-
                   <span>
                     DYNAMIC WORLD
                   </span>
@@ -1579,11 +1645,9 @@ function ValidationPage() {
                       currentPoint.dw_class
                     )}
                   </strong>
-
                 </div>
 
                 <div className="point-row">
-
                   <span>
                     STATUS
                   </span>
@@ -1603,21 +1667,30 @@ function ValidationPage() {
                       ? "Validated"
                       : "Not validated"}
                   </strong>
-
                 </div>
-
               </div>
 
-              <button
-                type="button"
-                className="earth-button"
-                onClick={
-                  handleGoogleEarthPro
-                }
-              >
-                OPEN CURRENT POINT IN GOOGLE EARTH PRO
-              </button>
+              <div className="google-earth-actions">
+                <button
+                  type="button"
+                  className="google-earth-button"
+                  onClick={
+                    handleGoogleEarthPro
+                  }
+                >
+                  OPEN IN GOOGLE EARTH PRO
+                </button>
 
+                <button
+                  type="button"
+                  className="google-earth-button"
+                  onClick={
+                    handleGoogleEarthWeb
+                  }
+                >
+                  OPEN IN GOOGLE EARTH WEB
+                </button>
+              </div>
             </section>
 
             {/* =================================================
@@ -1625,9 +1698,7 @@ function ValidationPage() {
                ================================================= */}
 
             <section className="sidebar-section compact-section">
-
               <div className="section-title-row">
-
                 <h2>
                   REFERENCE CLASS
                 </h2>
@@ -1638,11 +1709,9 @@ function ValidationPage() {
                     ? `DEFAULT: ${currentPoint.dw_class}`
                     : "DEFAULT"}
                 </span>
-
               </div>
 
               <div className="class-list compact-class-list">
-
                 {CLASSES.map(
                   (item) => (
                     <label
@@ -1656,7 +1725,6 @@ function ValidationPage() {
                           : ""
                       }
                     >
-
                       <input
                         type="radio"
                         name="reference-class"
@@ -1673,15 +1741,14 @@ function ValidationPage() {
 
                       <span>
                         {item.id} —{" "}
-                        {item.name}
+                        {
+                          item.name
+                        }
                       </span>
-
                     </label>
                   )
                 )}
-
               </div>
-
             </section>
 
             {/* =================================================
@@ -1689,7 +1756,6 @@ function ValidationPage() {
                ================================================= */}
 
             <section className="sidebar-section compact-section">
-
               <h2>
                 REFERENCE SOURCE
               </h2>
@@ -1698,13 +1764,14 @@ function ValidationPage() {
                 value={
                   referenceSource
                 }
-                onChange={(event) =>
+                onChange={(
+                  event
+                ) =>
                   setReferenceSource(
                     event.target.value
                   )
                 }
               >
-
                 <option value="Sentinel-2">
                   Sentinel-2
                 </option>
@@ -1716,7 +1783,6 @@ function ValidationPage() {
                 <option value="Other">
                   Other
                 </option>
-
               </select>
 
               <button
@@ -1736,9 +1802,7 @@ function ValidationPage() {
               >
                 SAVE ONLY
               </button>
-
             </section>
-
           </>
         )}
 
@@ -1747,7 +1811,6 @@ function ValidationPage() {
             {message}
           </div>
         )}
-
       </aside>
 
       {/* =================================================
@@ -1755,11 +1818,8 @@ function ValidationPage() {
          ================================================= */}
 
       <main className="validation-main">
-
         <div className="validation-title">
-
           <div>
-
             <h1>
               {area} / {year} —
               LULC Validation
@@ -1768,7 +1828,8 @@ function ValidationPage() {
             {currentPoint && (
               <p>
                 Point{" "}
-                {currentIndex + 1} —{" "}
+                {currentIndex + 1}{" "}
+                —{" "}
                 {safeNumber(
                   currentPoint.latitude
                 ).toFixed(6)}
@@ -1778,7 +1839,6 @@ function ValidationPage() {
                 ).toFixed(6)}
               </p>
             )}
-
           </div>
 
           {rasterLoading && (
@@ -1786,19 +1846,15 @@ function ValidationPage() {
               Loading raster window...
             </span>
           )}
-
         </div>
 
         <div className="dual-view">
-
           {/* =================================================
               LULC
              ================================================= */}
 
           <section className="map-panel">
-
             <div className="map-header">
-
               <div>
                 ORIGINAL LULC GEOTIFF
               </div>
@@ -1806,25 +1862,22 @@ function ValidationPage() {
               <span>
                 Dynamic World
               </span>
-
             </div>
 
             <div className="map-container">
-
               <RasterCanvas
                 raster={
                   lulcRaster
                 }
                 type="lulc"
                 pointNumber={
-                  currentIndex + 1
+                  currentIndex +
+                  1
                 }
               />
-
             </div>
 
             <div className="map-footer">
-
               <span>
                 Dynamic World LULC classes
               </span>
@@ -1834,9 +1887,7 @@ function ValidationPage() {
                   Point centered
                 </span>
               )}
-
             </div>
-
           </section>
 
           {/* =================================================
@@ -1844,9 +1895,7 @@ function ValidationPage() {
              ================================================= */}
 
           <section className="map-panel">
-
             <div className="map-header">
-
               <div>
                 REFERENCE — B4 / B3 / B2
               </div>
@@ -1854,25 +1903,22 @@ function ValidationPage() {
               <span>
                 Sentinel-2
               </span>
-
             </div>
 
             <div className="map-container">
-
               <RasterCanvas
                 raster={
                   referenceRaster
                 }
                 type="reference"
                 pointNumber={
-                  currentIndex + 1
+                  currentIndex +
+                  1
                 }
               />
-
             </div>
 
             <div className="map-footer">
-
               <span>
                 Sentinel-2 reference imagery
               </span>
@@ -1882,39 +1928,53 @@ function ValidationPage() {
                   Same coordinates
                 </span>
               )}
-
             </div>
-
           </section>
-
         </div>
-
       </main>
-
     </div>
   );
 }
 
 /* =========================================================
-RESULTS PAGE
-========================================================= */
+   RESULTS PAGE
+   ========================================================= */
 
 function ResultsPage({
   setPage,
   active,
+  setExportSession,
 }) {
+  const [area, setArea] =
+    useState("Agra");
+
+  const [year, setYear] =
+    useState("2018");
+
   const [results, setResults] =
     useState(null);
 
   const [message, setMessage] =
     useState("");
 
+  const [loading, setLoading] =
+    useState(false);
+
   async function loadResults() {
     try {
-      const data =
-        await getValidationResults();
+      setLoading(true);
+      setMessage("");
+      setResults(null);
 
-      setResults(data);
+      const data =
+        await getValidationResults(
+          area,
+          year
+        );
+
+      setResults(
+        data
+      );
     } catch (error) {
       console.error(
         "URBANFLOW results error:",
@@ -1923,84 +1983,80 @@ function ResultsPage({
 
       setMessage(
         error?.message ||
-          "Could not load validation results."
+          `Could not load ${area} ${year} validation results.`
+      );
+    } finally {
+      setLoading(
+        false
       );
     }
   }
 
   useEffect(() => {
     if (active) {
-      loadResults();
+      setMessage("");
     }
   }, [active]);
 
-  async function handleExport() {
-    try {
-      const result =
-        await exportValidation();
-
-      setMessage(
-        result?.message ||
-          "Validation exported successfully."
-      );
-    } catch (error) {
-      setMessage(
-        error?.message ||
-          "Export failed."
-      );
-    }
+  function changeArea(
+    value
+  ) {
+    setArea(value);
+    setResults(null);
+    setMessage("");
   }
 
-  if (!results) {
-    return (
-      <main className="results-page">
+  function changeYear(
+    value
+  ) {
+    setYear(value);
+    setResults(null);
+    setMessage("");
+  }
 
-        <h1>
-          Validation Results
-        </h1>
+  function openExport() {
+    if (
+      !results ||
+      safeNumber(
+        results.total_samples
+      ) <= 0
+    ) {
+      setMessage(
+        "Load validation results before exporting."
+      );
 
-        <p>
-          {message ||
-            "No validation results available yet."}
-        </p>
+      return;
+    }
 
-        <button
-          className="secondary-button"
-          onClick={() =>
-            setPage("validation")
-          }
-        >
-          Back to Validation
-        </button>
+    setExportSession({
+      area,
+      year,
+    });
 
-      </main>
-    );
+    setPage("export");
   }
 
   return (
     <main className="results-page">
-
       <div className="results-heading">
-
         <div>
-
           <h1>
             Validation Results
           </h1>
 
           <p>
-            {results.total_samples}{" "}
-            validated samples
+            Review validation accuracy for the selected study area and year.
           </p>
-
         </div>
 
         <div className="results-actions">
-
           <button
             className="secondary-button"
+            type="button"
             onClick={() =>
-              setPage("validation")
+              setPage(
+                "validation"
+              )
             }
           >
             Back to Validation
@@ -2008,16 +2064,110 @@ function ResultsPage({
 
           <button
             className="primary-button"
+            type="button"
             onClick={
-              handleExport
+              openExport
+            }
+            disabled={
+              !results ||
+              safeNumber(
+                results.total_samples
+              ) <= 0
             }
           >
-            EXPORT CSV
+            EXPORT
           </button>
+        </div>
+      </div>
 
+      <section className="result-card results-selector-card">
+        <div className="results-selector-grid">
+          <div>
+            <label htmlFor="results-area">
+              AREA
+            </label>
+
+            <select
+              id="results-area"
+              value={area}
+              onChange={(
+                event
+              ) =>
+                changeArea(
+                  event.target.value
+                )
+              }
+            >
+              <option value="Agra">
+                Agra
+              </option>
+
+              <option value="Mathura">
+                Mathura
+              </option>
+
+              <option value="Delhi">
+                Delhi
+              </option>
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="results-year">
+              YEAR
+            </label>
+
+            <select
+              id="results-year"
+              value={year}
+              onChange={(
+                event
+              ) =>
+                changeYear(
+                  event.target.value
+                )
+              }
+            >
+              {YEARS.map(
+                (item) => (
+                  <option
+                    key={item}
+                    value={item}
+                  >
+                    {item}
+                  </option>
+                )
+              )}
+            </select>
+          </div>
+
+          <div className="results-load-action">
+            <button
+              className="primary-button"
+              type="button"
+              onClick={
+                loadResults
+              }
+              disabled={
+                loading
+              }
+            >
+              {loading
+                ? "LOADING..."
+                : "LOAD RESULTS"}
+            </button>
+          </div>
         </div>
 
-      </div>
+        {results && (
+          <div className="selected-session-label">
+            SELECTED SESSION:{" "}
+            <strong>
+              {area} / {year}
+            </strong>
+          </div>
+        )}
+      </section>
 
       {message && (
         <div className="status-message">
@@ -2025,272 +2175,451 @@ function ResultsPage({
         </div>
       )}
 
-      {/* =================================================
-          METRICS
-         ================================================= */}
+      {loading &&
+        !results && (
+          <section className="result-card">
+            <div className="empty-history">
+              Loading{" "}
+              {area} / {year}{" "}
+              results...
+            </div>
+          </section>
+        )}
 
-      <div className="metric-grid">
+      {results && (
+        <>
+          <div className="metric-grid">
+            <div className="metric-card overall-accuracy-card">
+              <span>
+                Overall Accuracy
+              </span>
 
-        <div className="metric-card overall-accuracy-card">
+              <strong>
+                {(
+                  safeNumber(
+                    results.overall_accuracy
+                  ) * 100
+                ).toFixed(2)}
+                %
+              </strong>
+            </div>
 
-          <span>
-            Overall Accuracy
-          </span>
+            <div className="metric-card">
+              <span>
+                Kappa
+              </span>
 
-          <strong>
-            {(
-              safeNumber(
-                results.overall_accuracy
-              ) * 100
-            ).toFixed(2)}
-            %
-          </strong>
+              <strong>
+                {safeNumber(
+                  results.kappa
+                ).toFixed(4)}
+              </strong>
+            </div>
 
-        </div>
+            <div className="metric-card">
+              <span>
+                Validated Points
+              </span>
 
-        <div className="metric-card">
+              <strong>
+                {
+                  results.total_samples
+                }
+              </strong>
+            </div>
 
-          <span>
-            Kappa
-          </span>
+            <div className="metric-card">
+              <span>
+                Correct Samples
+              </span>
 
-          <strong>
-            {safeNumber(
-              results.kappa
-            ).toFixed(4)}
-          </strong>
+              <strong>
+                {
+                  results.correct_samples
+                }
+              </strong>
+            </div>
+          </div>
 
-        </div>
+          <section className="result-card">
+            <h2>
+              CONFUSION MATRIX
+            </h2>
 
-        <div className="metric-card">
-
-          <span>
-            Validated Points
-          </span>
-
-          <strong>
-            {results.total_samples}
-          </strong>
-
-        </div>
-
-        <div className="metric-card">
-
-          <span>
-            Correct Samples
-          </span>
-
-          <strong>
-            {results.correct_samples}
-          </strong>
-
-        </div>
-
-      </div>
-
-      {/* =================================================
-          CONFUSION MATRIX
-         ================================================= */}
-
-      <section className="result-card">
-
-        <h2>
-          CONFUSION MATRIX
-        </h2>
-
-        <div className="matrix-wrapper">
-
-          <table className="matrix">
-
-            <thead>
-
-              <tr>
-
-                <th>
-                  Reference ↓ / DW →
-                </th>
-
-                {CLASSES.map(
-                  (item) => (
-                    <th
-                      key={
-                        item.id
-                      }
-                    >
-                      {item.id}
-                    </th>
-                  )
-                )}
-
-              </tr>
-
-            </thead>
-
-            <tbody>
-
-              {(
-                results.confusion_matrix ||
-                []
-              ).map(
-                (row, rowIndex) => (
-                  <tr
-                    key={
-                      rowIndex
-                    }
-                  >
-
+            <div className="matrix-wrapper">
+              <table className="matrix">
+                <thead>
+                  <tr>
                     <th>
-                      {rowIndex}
+                      Reference ↓ / DW →
                     </th>
 
-                    {row.map(
-                      (
-                        value,
-                        columnIndex
-                      ) => (
-                        <td
+                    {CLASSES.map(
+                      (item) => (
+                        <th
                           key={
-                            columnIndex
-                          }
-                          className={
-                            rowIndex ===
-                            columnIndex
-                              ? "diagonal"
-                              : ""
+                            item.id
                           }
                         >
-                          {value}
-                        </td>
+                          {
+                            item.id
+                          }
+                        </th>
                       )
                     )}
-
                   </tr>
-                )
-              )}
+                </thead>
 
-            </tbody>
+                <tbody>
+                  {(
+                    results.confusion_matrix ||
+                    []
+                  ).map(
+                    (
+                      row,
+                      rowIndex
+                    ) => (
+                      <tr
+                        key={
+                          rowIndex
+                        }
+                      >
+                        <th>
+                          {
+                            rowIndex
+                          }
+                        </th>
 
-          </table>
+                        {row.map(
+                          (
+                            value,
+                            columnIndex
+                          ) => (
+                            <td
+                              key={
+                                columnIndex
+                              }
+                              className={
+                                rowIndex ===
+                                columnIndex
+                                  ? "diagonal"
+                                  : ""
+                              }
+                            >
+                              {
+                                value
+                              }
+                            </td>
+                          )
+                        )}
+                      </tr>
+                    )
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
 
-        </div>
+          <section className="result-card">
+            <h2>
+              CLASS-WISE ACCURACY
+            </h2>
 
-      </section>
+            <div className="matrix-wrapper">
+              <table className="accuracy-table">
+                <thead>
+                  <tr>
+                    <th>
+                      Class
+                    </th>
 
-      {/* =================================================
-          CLASS ACCURACY
-         ================================================= */}
+                    <th>
+                      Reference Total
+                    </th>
 
-      <section className="result-card">
+                    <th>
+                      DW Total
+                    </th>
 
-        <h2>
-          CLASS-WISE ACCURACY
-        </h2>
+                    <th>
+                      Correct
+                    </th>
 
-        <table className="accuracy-table">
+                    <th>
+                      Producer Accuracy
+                    </th>
 
-          <thead>
+                    <th>
+                      User Accuracy
+                    </th>
+                  </tr>
+                </thead>
 
-            <tr>
+                <tbody>
+                  {(
+                    results.class_metrics ||
+                    []
+                  ).map(
+                    (item) => (
+                      <tr
+                        key={
+                          item.class_id
+                        }
+                      >
+                        <td>
+                          {
+                            item.class_id
+                          }{" "}
+                          —{" "}
+                          {
+                            item.class_name
+                          }
+                        </td>
 
-              <th>
-                Class
-              </th>
+                        <td>
+                          {
+                            item.reference_total
+                          }
+                        </td>
 
-              <th>
-                Reference Total
-              </th>
+                        <td>
+                          {
+                            item.dw_total
+                          }
+                        </td>
 
-              <th>
-                DW Total
-              </th>
+                        <td>
+                          {
+                            item.correct
+                          }
+                        </td>
 
-              <th>
-                Correct
-              </th>
+                        <td>
+                          {(
+                            safeNumber(
+                              item.producer_accuracy
+                            ) * 100
+                          ).toFixed(
+                            2
+                          )}
+                          %
+                        </td>
 
-              <th>
-                Producer Accuracy
-              </th>
-
-              <th>
-                User Accuracy
-              </th>
-
-            </tr>
-
-          </thead>
-
-          <tbody>
-
-            {(
-              results.class_metrics ||
-              []
-            ).map(
-              (item) => (
-                <tr
-                  key={
-                    item.class_id
-                  }
-                >
-
-                  <td>
-                    {item.class_id} —{" "}
-                    {item.class_name}
-                  </td>
-
-                  <td>
-                    {
-                      item.reference_total
-                    }
-                  </td>
-
-                  <td>
-                    {
-                      item.dw_total
-                    }
-                  </td>
-
-                  <td>
-                    {
-                      item.correct
-                    }
-                  </td>
-
-                  <td>
-                    {(
-                      safeNumber(
-                        item.producer_accuracy
-                      ) * 100
-                    ).toFixed(2)}
-                    %
-                  </td>
-
-                  <td>
-                    {(
-                      safeNumber(
-                        item.user_accuracy
-                      ) * 100
-                    ).toFixed(2)}
-                    %
-                  </td>
-
-                </tr>
-              )
-            )}
-
-          </tbody>
-
-        </table>
-
-      </section>
-
+                        <td>
+                          {(
+                            safeNumber(
+                              item.user_accuracy
+                            ) * 100
+                          ).toFixed(
+                            2
+                          )}
+                          %
+                        </td>
+                      </tr>
+                    )
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
     </main>
   );
 }
 
 /* =========================================================
-HISTORY PAGE
-========================================================= */
+   EXPORT PAGE
+   ========================================================= */
+
+function ExportPage({
+  active,
+  setPage,
+  exportSession,
+}) {
+  const [message, setMessage] =
+    useState("");
+
+  const [downloading, setDownloading] =
+    useState("");
+
+  const area =
+    exportSession?.area ||
+    "Agra";
+
+  const year =
+    exportSession?.year ||
+    "2018";
+
+  useEffect(() => {
+    if (active) {
+      setMessage("");
+      setDownloading("");
+    }
+  }, [
+    active,
+    area,
+    year,
+  ]);
+
+  async function downloadFile(
+    downloadFunction,
+    label
+  ) {
+    try {
+      setDownloading(
+        label
+      );
+
+      setMessage("");
+
+      await downloadFunction(
+        area,
+        year
+      );
+
+      setMessage(
+        `${label} downloaded successfully for ${area} / ${year}.`
+      );
+    } catch (error) {
+      console.error(
+        "URBANFLOW export error:",
+        error
+      );
+
+      setMessage(
+        error?.message ||
+          `Could not download ${label}.`
+      );
+    } finally {
+      setDownloading("");
+    }
+  }
+
+  const options = [
+    [
+      "1",
+      "Validated Points CSV",
+      downloadValidatedPoints,
+    ],
+
+    [
+      "2",
+      "Confusion Matrix CSV",
+      downloadConfusionMatrix,
+    ],
+
+    [
+      "3",
+      "Class Accuracy CSV",
+      downloadClassAccuracy,
+    ],
+
+    [
+      "4",
+      "Validation Summary CSV",
+      downloadValidationSummary,
+    ],
+
+    [
+      "5",
+      "Complete Validation Package",
+      downloadCompleteValidationPackage,
+    ],
+  ];
+
+  return (
+    <main className="results-page export-page">
+      <div className="results-heading">
+        <div>
+          <h1>
+            Export Validation Data
+          </h1>
+
+          <p>
+            Choose an output for{" "}
+            <strong>
+              {area} / {year}
+            </strong>
+            .
+          </p>
+        </div>
+
+        <div className="results-actions">
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() =>
+              setPage(
+                "results"
+              )
+            }
+          >
+            ← Back to Results
+          </button>
+        </div>
+      </div>
+
+      {message && (
+        <div className="status-message export-message">
+          {message}
+        </div>
+      )}
+
+      <section className="result-card export-card">
+        <h2>
+          DOWNLOAD VALIDATION OUTPUT
+        </h2>
+
+        <div className="export-grid">
+          {options.map(
+            ([
+              number,
+              label,
+              downloadFunction,
+            ]) => (
+              <button
+                key={number}
+                type="button"
+                className={
+                  number === "5"
+                    ? "primary-button export-option export-complete"
+                    : "secondary-button export-option"
+                }
+                disabled={
+                  Boolean(
+                    downloading
+                  )
+                }
+                onClick={() =>
+                  downloadFile(
+                    downloadFunction,
+                    label
+                  )
+                }
+              >
+                <strong>
+                  {number}
+                </strong>
+
+                <span>
+                  {downloading ===
+                  label
+                    ? "DOWNLOADING..."
+                    : `Download ${label}`}
+                </span>
+              </button>
+            )
+          )}
+        </div>
+      </section>
+    </main>
+  );
+}
+
+/* =========================================================
+   HISTORY PAGE
+   ========================================================= */
 
 function HistoryPage({
   active,
@@ -2302,51 +2631,60 @@ function HistoryPage({
     useState("");
 
   useEffect(() => {
+    if (!active)
+      return;
+
+    let cancelled =
+      false;
+
     async function load() {
       try {
+        setMessage("");
+
         const data =
           await getHistory();
 
-        setHistory(
-          Array.isArray(data)
-            ? data
-            : []
-        );
+        if (!cancelled) {
+          setHistory(
+            Array.isArray(data)
+              ? data
+              : []
+          );
+        }
       } catch (error) {
         console.error(
           "URBANFLOW history error:",
           error
         );
 
-        setMessage(
-          error?.message ||
-            "Could not load history."
-        );
+        if (!cancelled) {
+          setMessage(
+            error?.message ||
+              "Could not load history."
+          );
+        }
       }
     }
 
-    if (active) {
-      load();
-    }
+    load();
+
+    return () => {
+      cancelled = true;
+    };
   }, [active]);
 
   return (
     <main className="history-page">
-
       <div className="results-heading">
-
         <div>
-
           <h1>
             Validation History
           </h1>
 
           <p>
-            Previously completed URBANFLOW validation sessions
+            Previously exported URBANFLOW validation sessions.
           </p>
-
         </div>
-
       </div>
 
       {message && (
@@ -2356,24 +2694,16 @@ function HistoryPage({
       )}
 
       <section className="result-card">
-
-        {history.length === 0 ? (
-
+        {history.length ===
+        0 ? (
           <div className="empty-history">
-            No validation sessions have
-            been exported yet.
+            No validation sessions have been exported yet.
           </div>
-
         ) : (
-
           <div className="history-table-wrapper">
-
             <table className="accuracy-table">
-
               <thead>
-
                 <tr>
-
                   <th>
                     Area
                   </th>
@@ -2401,31 +2731,28 @@ function HistoryPage({
                   <th>
                     Date
                   </th>
-
                 </tr>
-
               </thead>
 
               <tbody>
-
                 {history.map(
                   (
                     item,
                     index
                   ) => (
-
                     <tr
-                      key={
-                        index
-                      }
+                      key={`${item.area}-${item.year}-${item.timestamp || index}`}
                     >
-
                       <td>
-                        {item.area}
+                        {
+                          item.area
+                        }
                       </td>
 
                       <td>
-                        {item.year}
+                        {
+                          item.year
+                        }
                       </td>
 
                       <td>
@@ -2445,46 +2772,224 @@ function HistoryPage({
                           safeNumber(
                             item.overall_accuracy
                           ) * 100
-                        ).toFixed(2)}
+                        ).toFixed(
+                          2
+                        )}
                         %
                       </td>
 
                       <td>
                         {safeNumber(
                           item.kappa
-                        ).toFixed(4)}
+                        ).toFixed(
+                          4
+                        )}
                       </td>
 
                       <td>
-                        {item.timestamp}
+                        {
+                          item.timestamp
+                        }
                       </td>
-
                     </tr>
-
                   )
                 )}
-
               </tbody>
-
             </table>
-
           </div>
-
         )}
-
       </section>
-
     </main>
   );
 }
 
 /* =========================================================
-MAIN APP
-========================================================= */
+   ACTIVE USERS PAGE
+   ========================================================= */
+
+function ActiveUsersPage({
+  active,
+}) {
+  const [users, setUsers] =
+    useState([]);
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [message, setMessage] =
+    useState("");
+
+  useEffect(() => {
+    if (!active)
+      return;
+
+    let cancelled =
+      false;
+
+    async function loadActiveUsers() {
+      try {
+        setLoading(true);
+        setMessage("");
+
+        const data =
+          await getActiveUsers();
+
+        if (!cancelled) {
+          setUsers(
+            Array.isArray(data)
+              ? data
+              : []
+          );
+        }
+      } catch (error) {
+        console.error(
+          "URBANFLOW active users error:",
+          error
+        );
+
+        if (!cancelled) {
+          setMessage(
+            error?.message ||
+              "Could not load active users."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(
+            false
+          );
+        }
+      }
+    }
+
+    loadActiveUsers();
+
+    const interval =
+      window.setInterval(
+        loadActiveUsers,
+        15000
+      );
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(
+        interval
+      );
+    };
+  }, [active]);
+
+  return (
+    <main className="history-page">
+      <div className="results-heading">
+        <div>
+          <h1>
+            Active Users
+          </h1>
+
+          <p>
+            Users currently working on an URBANFLOW study area and year.
+          </p>
+        </div>
+
+        {loading && (
+          <span className="loading-text">
+            Updating...
+          </span>
+        )}
+      </div>
+
+      {message && (
+        <div className="status-message">
+          {message}
+        </div>
+      )}
+
+      <section className="result-card">
+        {users.length ===
+        0 ? (
+          <div className="empty-history">
+            No active users are currently working on a loaded project.
+          </div>
+        ) : (
+          <div className="history-table-wrapper">
+            <table className="accuracy-table">
+              <thead>
+                <tr>
+                  <th>
+                    User
+                  </th>
+
+                  <th>
+                    Area
+                  </th>
+
+                  <th>
+                    Year
+                  </th>
+
+                  <th>
+                    Status
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {users.map(
+                  (
+                    item,
+                    index
+                  ) => (
+                    <tr
+                      key={`${item.username}-${item.area}-${item.year}-${index}`}
+                    >
+                      <td>
+                        {
+                          item.username
+                        }
+                      </td>
+
+                      <td>
+                        {
+                          item.area
+                        }
+                      </td>
+
+                      <td>
+                        {
+                          item.year
+                        }
+                      </td>
+
+                      <td>
+                        {
+                          item.status ||
+                            "Active"
+                        }
+                      </td>
+                    </tr>
+                  )
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </main>
+  );
+}
+
+/* =========================================================
+   MAIN APP
+   ========================================================= */
 
 export default function App() {
   const [page, setPage] =
-    useState("validation");
+    useState(
+      "validation"
+    );
+
+  const [exportSession, setExportSession] =
+    useState(null);
 
   const [user, setUser] =
     useState(() => {
@@ -2504,6 +3009,10 @@ export default function App() {
       }
     });
 
+  /* =======================================================
+     LOGIN
+     ======================================================= */
+
   function handleLogin(
     loggedInUser
   ) {
@@ -2512,17 +3021,49 @@ export default function App() {
     );
   }
 
-  function handleLogout() {
-    localStorage.removeItem(
-      "urbanflow_access_token"
-    );
+  /* =======================================================
+     ACTIVE USER HEARTBEAT
+     ======================================================= */
 
-    localStorage.removeItem(
-      "urbanflow_user"
-    );
+  useEffect(() => {
+    if (!user)
+      return;
 
-    setUser(null);
-  }
+    let cancelled =
+      false;
+
+    async function sendHeartbeat() {
+      try {
+        await heartbeatActiveUser();
+      } catch (error) {
+        if (!cancelled) {
+          console.error(
+            "URBANFLOW active user heartbeat error:",
+            error
+          );
+        }
+      }
+    }
+
+    sendHeartbeat();
+
+    const interval =
+      window.setInterval(
+        sendHeartbeat,
+        20000
+      );
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(
+        interval
+      );
+    };
+  }, [user]);
+
+  /* =======================================================
+     LOGIN SCREEN
+     ======================================================= */
 
   if (!user) {
     return (
@@ -2534,9 +3075,12 @@ export default function App() {
     );
   }
 
+  /* =======================================================
+     APPLICATION
+     ======================================================= */
+
   return (
     <div className="app">
-
       <Header
         page={page}
         setPage={setPage}
@@ -2557,7 +3101,8 @@ export default function App() {
       <div
         style={{
           display:
-            page === "results"
+            page ===
+            "results"
               ? "block"
               : "none",
         }}
@@ -2567,7 +3112,11 @@ export default function App() {
             setPage
           }
           active={
-            page === "results"
+            page ===
+            "results"
+          }
+          setExportSession={
+            setExportSession
           }
         />
       </div>
@@ -2575,7 +3124,30 @@ export default function App() {
       <div
         style={{
           display:
-            page === "history"
+            page ===
+            "export"
+              ? "block"
+              : "none",
+        }}
+      >
+        <ExportPage
+          active={
+            page === "export"
+          }
+          setPage={
+            setPage
+          }
+          exportSession={
+            exportSession
+          }
+        />
+      </div>
+
+      <div
+        style={{
+          display:
+            page ===
+            "history"
               ? "block"
               : "none",
         }}
@@ -2587,6 +3159,22 @@ export default function App() {
         />
       </div>
 
+      <div
+        style={{
+          display:
+            page ===
+            "active-users"
+              ? "block"
+              : "none",
+        }}
+      >
+        <ActiveUsersPage
+          active={
+            page ===
+            "active-users"
+          }
+        />
+      </div>
     </div>
   );
 }
