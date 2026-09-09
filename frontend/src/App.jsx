@@ -2867,7 +2867,7 @@ function ActiveUsersPage({
     const interval =
       window.setInterval(
         loadActiveUsers,
-        15000
+        30000
       );
 
     return () => {
@@ -3050,7 +3050,7 @@ export default function App() {
     const interval =
       window.setInterval(
         sendHeartbeat,
-        20000
+        30000
       );
 
     return () => {

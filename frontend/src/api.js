@@ -63,7 +63,10 @@ async function request(url, options = {}) {
    FILE DOWNLOAD
    ============================================================ */
 
-async function downloadRequest(url) {
+async function downloadRequest(
+  url,
+  fallbackFilename
+) {
   const token = localStorage.getItem(
     "urbanflow_access_token"
   );
@@ -124,7 +127,16 @@ async function downloadRequest(url) {
       /filename="?([^"]+)"?/i
     );
 
+  /*
+    The server filename is used only if no
+    Area/Year filename was supplied.
+
+    This allows the frontend to guarantee that
+    downloaded files contain the selected
+    Area and Year.
+  */
   const filename =
+    fallbackFilename ||
     match?.[1] ||
     "urbanflow_validation_export";
 
@@ -346,8 +358,12 @@ export async function downloadValidatedPoints(
     year: String(year),
   });
 
+  const filename =
+    `${String(area)}_${String(year)}_validated_points.csv`;
+
   return downloadRequest(
-    `/validation/export/validated-points?${params.toString()}`
+    `/validation/export/validated-points?${params.toString()}`,
+    filename
   );
 }
 
@@ -360,8 +376,12 @@ export async function downloadConfusionMatrix(
     year: String(year),
   });
 
+  const filename =
+    `${String(area)}_${String(year)}_confusion_matrix.csv`;
+
   return downloadRequest(
-    `/validation/export/confusion-matrix?${params.toString()}`
+    `/validation/export/confusion-matrix?${params.toString()}`,
+    filename
   );
 }
 
@@ -374,8 +394,12 @@ export async function downloadClassAccuracy(
     year: String(year),
   });
 
+  const filename =
+    `${String(area)}_${String(year)}_class_accuracy.csv`;
+
   return downloadRequest(
-    `/validation/export/class-accuracy?${params.toString()}`
+    `/validation/export/class-accuracy?${params.toString()}`,
+    filename
   );
 }
 
@@ -388,8 +412,12 @@ export async function downloadValidationSummary(
     year: String(year),
   });
 
+  const filename =
+    `${String(area)}_${String(year)}_validation_summary.csv`;
+
   return downloadRequest(
-    `/validation/export/summary?${params.toString()}`
+    `/validation/export/summary?${params.toString()}`,
+    filename
   );
 }
 
@@ -402,8 +430,12 @@ export async function downloadCompleteValidationPackage(
     year: String(year),
   });
 
+  const filename =
+    `${String(area)}_${String(year)}_complete_validation_package.zip`;
+
   return downloadRequest(
-    `/validation/export/complete?${params.toString()}`
+    `/validation/export/complete?${params.toString()}`,
+    filename
   );
 }
 
@@ -443,10 +475,10 @@ export async function getHistory() {
    ============================================================ */
 
 /*
-   Sends a heartbeat for the currently logged-in user.
+  Sends a heartbeat for the currently logged-in user.
 
-   The backend uses this to determine that the user
-   is currently active/working.
+  The backend uses this to determine that the user
+  is currently active/working.
 */
 
 export async function heartbeatActiveUser() {
@@ -459,20 +491,20 @@ export async function heartbeatActiveUser() {
 }
 
 /*
-   Gets only active working-session information.
+  Gets only active working-session information.
 
-   Example response:
+  Example response:
 
-   [
-     {
-       username: "bhagun74",
-       area: "Agra",
-       year: 2018,
-       status: "Active"
-     }
-   ]
+  [
+    {
+      username: "bhagun74",
+      area: "Agra",
+      year: 2018,
+      status: "Active"
+    }
+  ]
 
-   No validation records are returned.
+  No validation records are returned.
 */
 
 export async function getActiveUsers() {
